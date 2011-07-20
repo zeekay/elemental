@@ -1,4 +1,4 @@
-from core import *
-import html
+__all__ = ['core', 'tags']
+from core import Template as _T
 
-template = Template()
+template = _T()
