@@ -1,11 +1,13 @@
+import os, sys, types
 from collections import deque
 
 class Element(object):
     tag = None
-    _format = '<{0}{1}>{2}{3}</{0}>'
+    format = '<{tag}{attrs}>{text}{children}</{tag}>'
 
     def __init__(self, *args, **attrs):
         self._root = self._parent = None
+        self.children = []
         elements, self.text = self._parse_args(args)
         self._add_children(elements)
         self.attrs = attrs
@@ -25,18 +27,19 @@ class Element(object):
             return object.__getattribute__(self, name)
 
     def __getattr__(self, name):
-        if name.startswith('_'):
-            raise AttributeError(name)
+        if name.startswith('_') or name == 'trait_names':
+            raise AttributeError()
         elif '(' in name:
             return self.__getattribute__(name.split('(')[0])
         else:
             elements = [e for e in self.children if e.tag == name]
             if elements:
                 return elements
-            if name == 'trait_names': raise AttributeError()
-            e = type(name, (Element,), {'tag': name})()
-            self._add_tag(name, e)
-            return e
+            if name in self.valid_tags:
+                tag = self.valid_tags[name]()
+                self._add_tag(name, tag)
+                return tag
+            raise InvalidElement(name)
 
     def __setattr__(self, name, item):
         if not name.startswith('_') and isinstance(item, Element):
@@ -48,7 +51,21 @@ class Element(object):
             return self.children[val]
         if isinstance(val, slice):
             return self.children[val]
-        return self._child_query(val)
+        return self.query(val)
+
+    def __str__(self):
+        return self.render_this()
+
+    def __repr__(self):
+        return '<Elemental.{0} object `{1}` at {2}>'.format(self.tag, self.text, hex(id(self)))
+
+    def _parse_args(self, args):
+        elements, text = [], ''
+        for arg in args:
+            if isinstance(arg, basestring):
+                text = arg
+            else: elements.append(arg)
+        return elements, text
 
     def _add_tag(self, tag, e):
         e._parent = self
@@ -60,51 +77,8 @@ class Element(object):
                 self.children.remove(c)
         self.children.append(e)
 
-    def _update_children(self):
-        for e in self._find_children():
-            e._root = self._root or self
-
-    def __str__(self):
-        return self.render_this()
-
-    def __repr__(self):
-        return '<Elemental.{0} object `{1}` at {2}>'.format(self.tag, self.text, hex(id(self)))
-
-    def find_elements(self, path, elements):
-        if '[' in path:
-            tag, path = path[:-1].split('[')
-            elements = [e for e in elements if e.tag == tag]
-            if not elements:
-                return []
-        if '=' in path:
-            k, v = path.split('=')
-            if k == 'text':
-                v = v.lower()
-                return [e for e in elements if v in e.text.lower()]
-            return [e for e in elements if e.attrs.get(k) == v]
-        return [e for e in elements if e.tag == path]
-
-    def _find_children(self):
-        return sum([self.children] + [e._find_children() for e in self.children], [])
-
-    def _child_query(self, val):
-        if val.startswith('//'):
-            return self.find_elements(val.strip('/'), self._find_children())
-        paths = val.strip('/').split('/')
-        paths = deque(paths)
-        elements = self.children
-        while paths:
-            elements = self.find_elements(paths.popleft(), elements)
-            if not elements: break
-        return elements
-
-    def _parse_args(self, args):
-        elements, text = [], ''
-        for arg in args:
-            if isinstance(arg, basestring):
-                text = arg
-            else: elements.append(arg)
-        return elements, text
+    def _get_children(self):
+        return sum([self.children] + [e._get_children() for e in self.children], [])
 
     def _add_children(self, elements):
         for e in elements:
@@ -118,6 +92,35 @@ class Element(object):
                 e._root = self._root or self
                 e._parent = self
                 e._update_children()
+
+    def _update_children(self):
+        for e in self._get_children():
+            e._root = self._root or self
+
+    def _search_elements(self, path, elements):
+        if '[' in path:
+            tag, path = path[:-1].split('[')
+            elements = [e for e in elements if e.tag == tag]
+            if not elements:
+                return []
+        if '=' in path:
+            k, v = path.split('=')
+            if k == 'text':
+                v = v.lower()
+                return [e for e in elements if v in e.text.lower()]
+            return [e for e in elements if e.attrs.get(k) == v]
+        return [e for e in elements if e.tag == path]
+
+    def query(self, val):
+        if val.startswith('//'):
+            return self._search_elements(val.strip('/'), self._get_children())
+        paths = val.strip('/').split('/')
+        paths = deque(paths)
+        elements = self.children
+        while paths:
+            elements = self._search_elements(paths.popleft(), elements)
+            if not elements: break
+        return elements
 
     def render_attrs(self):
         def map_attr(name):
@@ -134,11 +137,11 @@ class Element(object):
             if self._root:
                 return self._root.render(format)
         if format is None:
-            format = self._format
-        return format.format(self.tag,
-                             self.render_attrs(),
-                             self.text,
-                             ''.join(e.render(this=True) for e in self.children))
+            format = self.format
+        return format.format(tag=self.tag,
+                             attrs=self.render_attrs(),
+                             text=self.text,
+                             children=''.join(e.render(this=True) for e in self.children))
 
     def render_this(self, format=None):
         return self.render(format, this=True)
@@ -156,12 +159,17 @@ class Element(object):
                 try:
                     delattr(self._parent, self.tag)
                 except AttributeError: pass
-        for e in self._find_children():
+        for e in self._get_children():
             e._root = self
         self._root = self._parent = None
         return self
         
-
+    @property
+    def valid_tags(self):
+        if not hasattr(self, '_valid_tags'):
+            tags = __import__('elemental.tags', fromlist=['tags'])
+            self._valid_tags = {x: getattr(tags, x) for x in dir(tags) if not x.startswith('_')}
+        return self._valid_tags
 
 class HashedDict(dict):
     def __hash__(self):
@@ -172,7 +180,6 @@ class Template(object):
     cache = {}
 
     def __init__(self, path='templates', debug=False):
-        import os, sys, types
         self.debug = debug
         sys.path.insert(0, os.path.abspath(path))
 
@@ -204,3 +211,10 @@ class Template(object):
         rendered = template(*args, **kwargs).render()
         Template.cache[signature] = rendered
         return rendered
+
+class InvalidElement(Exception):
+   def __init__(self, value):
+       self.parameter = value
+
+   def __str__(self):
+       return repr(self.parameter)
