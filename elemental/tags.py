@@ -18,6 +18,9 @@ elements = [
 for e in elements:
     setattr(modules[__name__], e, type(e, (Element,), {'tag': e}))
 
+class comment(Element):
+    tag = 'comment'
+    format = '<!-- {text} -->'
 
 class doctype(Element):
     tag = 'doctype'
@@ -30,7 +33,7 @@ class link(Element):
 
 
 class meta(link):
-    tag = 'link'
+    tag = 'meta'
 
 
 class html5(Element):

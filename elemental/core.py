@@ -1,9 +1,9 @@
 import os, sys, types
 from collections import deque
 
-try:
-    from BeautifulSoup import BeautifulSoup as BS
-except ImportError: BS = None
+try: from lxml.html import fromstring, tostring
+except ImportError: fromstring = tostring = None
+
 
 class Element(object):
     tag = None
@@ -61,9 +61,7 @@ class Element(object):
         return self.select(key)
 
     def __str__(self):
-        if BS:
-            return BS(self.render_this()).prettify()
-        return self.render_this()
+        return self.render_this(pretty=True)
 
     def __repr__(self):
         name = '`%s` ' % self.text[:20] if self.text else ''
@@ -132,22 +130,20 @@ class Element(object):
         out = ' '.join(attrs)
         return ' %s' % out if out else ''
 
-    def render(self, format=None, this=False, prettify=False):
-        if this is False:
-            if self._root:
-                return self._root.render(format)
-        if format is None:
-            format = self.format
-        rendered = format.format(tag=self.tag,
-                                 attrs=self.render_attrs(),
-                                 text=self.text,
-                                 children=''.join(e.render_this() for e in self.children))
-        if prettify and BS:
-            rendered = BS(rendered).prettify()
-        return rendered
+    def render(self, format=None, this=False, pretty=False):
+        if this is False and self._root:
+            return self._root.render(format)
+        format = format or self.format
+        out = format.format(tag=self.tag,
+                            attrs=self.render_attrs(),
+                            text=self.text,
+                            children=''.join(e.render_this() for e in self.children))
+        if pretty and tostring:
+            return prettify(out)
+        return out
 
-    def render_this(self, format=None, prettify=False):
-        return self.render(format, this=True)
+    def render_this(self, format=None, pretty=False):
+        return self.render(format=format, pretty=pretty, this=True)
 
     def clear(self):
         tags = set(e.tag for e in self.children)
@@ -158,9 +154,8 @@ class Element(object):
     def pop(self):
         if self._parent:
             self._parent.children.remove(self)
-            if len([e for e in self._parent.children if e.tag == self.tag]) == 0:
-                try:
-                    delattr(self._parent, self.tag)
+            if [e for e in self._parent.children if e.tag == self.tag]:
+                try: delattr(self._parent, self.tag)
                 except AttributeError: pass
         for e in self._get_children():
             e._root = self
@@ -171,7 +166,7 @@ class Element(object):
     def valid_tags(self):
         if not hasattr(Element, '_valid_tags'):
             tags = __import__('elemental.tags', fromlist=['tags'])
-            Element._valid_tags = {x: getattr(tags, x) for x in dir(tags) if not x.startswith('_')}
+            Element._valid_tags = dict((x, getattr(tags, x)) for x in dir(tags) if not x.startswith('_'))
         return self._valid_tags
 
 
@@ -223,3 +218,12 @@ class InvalidElement(Exception):
 
    def __str__(self):
        return repr(self.parameter)
+
+
+def prettify(out):
+    if out.startswith('<!') and '<head' in out:
+        doctype, head, body = out.partition('<head')
+        body = ''.join(['<html>', head, body])
+        _, head, body = tostring(fromstring(out), pretty_print=True).partition('<head')
+        return ''.join([doctype, head, body])
+    return tostring(fromstring(out), pretty_print=True)
