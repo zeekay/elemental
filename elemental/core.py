@@ -1,6 +1,11 @@
 import os, sys, types
 from collections import deque
 
+try:
+    from BeautifulSoup import BeautifulSoup as BS
+except ImportError:
+    BS = None
+
 class Element(object):
     tag = None
     format = '<{tag}{attrs}>{text}{children}</{tag}>'
@@ -30,6 +35,7 @@ class Element(object):
         if name.startswith('_') or name == 'trait_names':
             raise AttributeError()
         elif '(' in name:
+            print name
             return self.__getattribute__(name.split('(')[0])
         else:
             elements = [e for e in self.children if e.tag == name]
@@ -54,10 +60,13 @@ class Element(object):
         return self.query(val)
 
     def __str__(self):
+        if BS:
+            return BS(self.render_this()).prettify()
         return self.render_this()
 
     def __repr__(self):
-        return '<Elemental.{0} object `{1}` at {2}>'.format(self.tag, self.text, hex(id(self)))
+        name = '`%s` ' % self.text[:20] if self.text else ''
+        return '<Element.{0} object {1}at {2}>'.format(self.tag, name, hex(id(self)))
 
     def _parse_args(self, args):
         elements, text = [], ''
@@ -132,18 +141,21 @@ class Element(object):
         out = ' '.join(attrs)
         return ' %s' % out if out else ''
 
-    def render(self, format=None, this=False):
+    def render(self, format=None, this=False, prettify=False):
         if this is False:
             if self._root:
                 return self._root.render(format)
         if format is None:
             format = self.format
-        return format.format(tag=self.tag,
-                             attrs=self.render_attrs(),
-                             text=self.text,
-                             children=''.join(e.render(this=True) for e in self.children))
+        rendered = format.format(tag=self.tag,
+                                 attrs=self.render_attrs(),
+                                 text=self.text,
+                                 children=''.join(e.render_this() for e in self.children))
+        if prettify and BS:
+            rendered = BS(rendered).prettify
+        return rendered
 
-    def render_this(self, format=None):
+    def render_this(self, format=None, prettify=False):
         return self.render(format, this=True)
 
     def clear(self):
@@ -163,13 +175,14 @@ class Element(object):
             e._root = self
         self._root = self._parent = None
         return self
-        
+
     @property
     def valid_tags(self):
-        if not hasattr(Elemental, '_valid_tags'):
+        if not hasattr(Element, '_valid_tags'):
             tags = __import__('elemental.tags', fromlist=['tags'])
-            Elemental._valid_tags = {x: getattr(tags, x) for x in dir(tags) if not x.startswith('_')}
+            Element._valid_tags = {x: getattr(tags, x) for x in dir(tags) if not x.startswith('_')}
         return self._valid_tags
+
 
 class HashedDict(dict):
     def __hash__(self):
@@ -211,6 +224,7 @@ class Template(object):
         rendered = template(*args, **kwargs).render()
         Template.cache[signature] = rendered
         return rendered
+
 
 class InvalidElement(Exception):
    def __init__(self, value):
