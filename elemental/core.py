@@ -6,9 +6,6 @@ class Element(object):
 
     def __init__(self, *args, **attrs):
         self._root = self._parent = None
-        self.tag = type(self).tag
-        self._format = type(self)._format
-        self.children = []
         elements, self.text = self._parse_args(args)
         self._add_children(elements)
         self.attrs = attrs
@@ -19,6 +16,13 @@ class Element(object):
         self._add_children(elements)
         self.attrs.update(attrs)
         return self
+
+    def __getattribute(self, name):
+        elements = [x for x in self.children if x.tag == name]
+        if elements:
+            return elements
+        else:
+            return object.__getattribute__(self, name)
 
     def __getattr__(self, name):
         if name.startswith('_'):
@@ -31,18 +35,13 @@ class Element(object):
                 return elements
             if name == 'trait_names': raise AttributeError()
             e = type(name, (Element,), {'tag': name})()
-            e._root = self._root or self
-            e._parent = self
-            self.children.append(e)
-            setattr(self, name, e)
+            self._add_tag(name, e)
             return e
 
-    def __getattribute(self, name):
-        elements = [x for x in self.children if x.tag == name]
-        if elements:
-            return elements
-        else:
-            return object.__getattribute__(self, name)
+    def __setattr__(self, name, item):
+        if not name.startswith('_') and isinstance(item, Element):
+            self._add_tag(name, item)
+        self.__dict__[name] = item
 
     def __getitem__(self, val):
         if isinstance(val, int):
@@ -50,6 +49,20 @@ class Element(object):
         if isinstance(val, slice):
             return self.children[val]
         return self._child_query(val)
+
+    def _add_tag(self, tag, e):
+        e._parent = self
+        e._root = self._root or self
+        e._update_children()
+        self.__dict__[tag] = e
+        for c in self.children:
+            if c.tag == e.tag:
+                self.children.remove(c)
+        self.children.append(e)
+
+    def _update_children(self):
+        for e in self._find_children():
+            e._root = self._root or self
 
     def __str__(self):
         return self.render_this()
@@ -97,17 +110,14 @@ class Element(object):
         for e in elements:
             if e._root and e._root not in self.children:
                 self.children.append(e._root)
+                e._root._root = self._root or self
                 e._root._parent = self
-                e._root._update_root(self)
+                e._root._update_children()
             else:
                 self.children.append(e)
-                e._update_root(self)
+                e._root = self._root or self
                 e._parent = self
-
-    def _update_root(self, parent):
-        self._root = parent
-        for e in self.children:
-            e._update_root(parent)
+                e._update_children()
 
     def render_attrs(self):
         def map_attr(name):
