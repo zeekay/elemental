@@ -152,7 +152,7 @@ class Element(object):
                                  text=self.text,
                                  children=''.join(e.render_this() for e in self.children))
         if prettify and BS:
-            rendered = BS(rendered).prettify
+            rendered = BS(rendered).prettify()
         return rendered
 
     def render_this(self, format=None, prettify=False):
