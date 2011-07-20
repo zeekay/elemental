@@ -3,8 +3,7 @@ from collections import deque
 
 try:
     from BeautifulSoup import BeautifulSoup as BS
-except ImportError:
-    BS = None
+except ImportError: BS = None
 
 class Element(object):
     tag = None
@@ -24,40 +23,42 @@ class Element(object):
         self.attrs.update(attrs)
         return self
 
-    def __getattribute(self, name):
-        elements = [x for x in self.children if x.tag == name]
+    def __getattribute(self, attr):
+        elements = [x for x in self.children if x.tag == attr]
         if elements:
             return elements
         else:
-            return object.__getattribute__(self, name)
+            return object.__getattribute__(self, attr)
 
-    def __getattr__(self, name):
-        if name.startswith('_') or name == 'trait_names':
+    def __getattr__(self, attr):
+        if attr.startswith('_') or attr == 'trait_names':
             raise AttributeError()
-        elif '(' in name:
-            print name
-            return self.__getattribute__(name.split('(')[0])
+        elif '(' in attr:
+            return self.__getattribute__(attr.split('(')[0])
         else:
-            elements = [e for e in self.children if e.tag == name]
+            elements = [e for e in self.children if e.tag == attr]
             if elements:
                 return elements
-            if name in self.valid_tags:
-                tag = self.valid_tags[name]()
-                self._add_tag(name, tag)
-                return tag
-            raise InvalidElement(name)
+            if attr in self.valid_tags:
+                e = self.valid_tags[attr]()
+                self._add_child(e)
+                return e
+            raise InvalidElement(attr)
 
-    def __setattr__(self, name, item):
-        if not name.startswith('_') and isinstance(item, Element):
-            self._add_tag(name, item)
-        self.__dict__[name] = item
+    def __setattr__(self, attr, item):
+        if not attr.startswith('_') and isinstance(item, Element):
+            for c in self.children:
+                if c.tag == e.tag:
+                    self.children.remove(c)
+            self._add_child(item)
+        self.__dict__[attr] = item
 
-    def __getitem__(self, val):
-        if isinstance(val, int):
-            return self.children[val]
-        if isinstance(val, slice):
-            return self.children[val]
-        return self.query(val)
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self.children[key]
+        if isinstance(key, slice):
+            return self.children[key]
+        return self.select(key)
 
     def __str__(self):
         if BS:
@@ -76,31 +77,20 @@ class Element(object):
             else: elements.append(arg)
         return elements, text
 
-    def _add_tag(self, tag, e):
-        e._parent = self
-        e._root = self._root or self
+    def _add_child(self, e):
+        e._parent, e._root = self, self._root or self
         e._update_children()
-        self.__dict__[tag] = e
-        for c in self.children:
-            if c.tag == e.tag:
-                self.children.remove(c)
+        self.__dict__[e.tag] = e
         self.children.append(e)
-
-    def _get_children(self):
-        return sum([self.children] + [e._get_children() for e in self.children], [])
 
     def _add_children(self, elements):
         for e in elements:
             if e._root and e._root not in self.children:
-                self.children.append(e._root)
-                e._root._root = self._root or self
-                e._root._parent = self
-                e._root._update_children()
-            else:
-                self.children.append(e)
-                e._root = self._root or self
-                e._parent = self
-                e._update_children()
+                e = e._root
+            self._add_child(e)
+
+    def _get_children(self):
+        return sum([self.children] + [e._get_children() for e in self.children], [])
 
     def _update_children(self):
         for e in self._get_children():
@@ -120,10 +110,10 @@ class Element(object):
             return [e for e in elements if e.attrs.get(k) == v]
         return [e for e in elements if e.tag == path]
 
-    def query(self, val):
-        if val.startswith('//'):
-            return self._search_elements(val.strip('/'), self._get_children())
-        paths = val.strip('/').split('/')
+    def select(self, query):
+        if query.startswith('//'):
+            return self._search_elements(query.strip('/'), self._get_children())
+        paths = query.strip('/').split('/')
         paths = deque(paths)
         elements = self.children
         while paths:
@@ -135,6 +125,7 @@ class Element(object):
         def map_attr(name):
             return {
                 'cls': 'class',
+                'httpequiv': 'http-equiv',
             }.get(name, name)
 
         attrs = ['='.join([map_attr(k), '"%s"' % v]) for k,v in self.attrs.iteritems()]
