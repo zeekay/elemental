@@ -166,9 +166,9 @@ class Element(object):
         
     @property
     def valid_tags(self):
-        if not hasattr(self, '_valid_tags'):
+        if not hasattr(Elemental, '_valid_tags'):
             tags = __import__('elemental.tags', fromlist=['tags'])
-            self._valid_tags = {x: getattr(tags, x) for x in dir(tags) if not x.startswith('_')}
+            Elemental._valid_tags = {x: getattr(tags, x) for x in dir(tags) if not x.startswith('_')}
         return self._valid_tags
 
 class HashedDict(dict):
