@@ -5,17 +5,18 @@ class Element(object):
     _format = '<{0}{1}>{2}{3}</{0}>'
 
     def __init__(self, *args, **attrs):
-        self._parent = None
+        self._root = self._parent = None
         self.tag = type(self).tag
-        self.format = type(self)._format
+        self._format = type(self)._format
+        self.children = []
         elements, self.text = self._parse_args(args)
-        self.children = self._get_children(elements)
+        self._add_children(elements)
         self.attrs = attrs
         self.__getattribute__ = self.__getattribute
 
     def __call__(self, *args, **attrs):
         elements, self.text = self._parse_args(args)
-        self.children.extend(self._get_children(elements))
+        self._add_children(elements)
         self.attrs.update(attrs)
         return self
 
@@ -29,8 +30,9 @@ class Element(object):
             if elements:
                 return elements
             if name == 'trait_names': raise AttributeError()
-            cls = type(name, (Element,), {'tag': name, '_parent': self._parent or self})
-            e = cls()
+            e = type(name, (Element,), {'tag': name})()
+            e._root = self._root or self
+            e._parent = self
             self.children.append(e)
             setattr(self, name, e)
             return e
@@ -50,10 +52,10 @@ class Element(object):
         return self._child_query(val)
 
     def __str__(self):
-        return '<Elemental.{0} object `{1}` at {2}>'.format(self.tag, self.text, hex(id(self)))
+        return self.render_this()
 
     def __repr__(self):
-        return self.__str__()
+        return '<Elemental.{0} object `{1}` at {2}>'.format(self.tag, self.text, hex(id(self)))
 
     def find_elements(self, path, elements):
         if '[' in path:
@@ -67,7 +69,7 @@ class Element(object):
                 v = v.lower()
                 return [e for e in elements if v in e.text.lower()]
             return [e for e in elements if e.attrs.get(k) == v]
-        return [e for e in elements if e.tag == val]
+        return [e for e in elements if e.tag == path]
 
     def _find_children(self):
         return sum([self.children] + [e._find_children() for e in self.children], [])
@@ -91,20 +93,21 @@ class Element(object):
             else: elements.append(arg)
         return elements, text
 
-    def _get_children(self, elements):
-        children = []
+    def _add_children(self, elements):
         for e in elements:
-            if e._parent and e._parent not in children:
-                children.append(e._parent)
+            if e._root and e._root not in self.children:
+                self.children.append(e._root)
+                e._root._parent = self
+                e._root._update_root(self)
             else:
-                children.append(e)
-            e._update_parent(self)
-        return children
+                self.children.append(e)
+                e._update_root(self)
+                e._parent = self
 
-    def _update_parent(self, parent):
-        self._parent = parent
+    def _update_root(self, parent):
+        self._root = parent
         for e in self.children:
-            e._update_parent(parent)
+            e._update_root(parent)
 
     def render_attrs(self):
         def map_attr(name):
@@ -118,8 +121,8 @@ class Element(object):
 
     def render(self, format=None, this=False):
         if this is False:
-            if self._parent:
-                return self._parent.render(format)
+            if self._root:
+                return self._root.render(format)
         if format is None:
             format = self._format
         return format.format(self.tag,
@@ -130,9 +133,30 @@ class Element(object):
     def render_this(self, format=None):
         return self.render(format, this=True)
 
+    def clear(self):
+        tags = set(e.tag for e in self.children)
+        for tag in tags:
+            delattr(self, tag)
+        self.children = []
+
+    def pop(self):
+        if self._parent:
+            self._parent.children.remove(self)
+            if len([e for e in self._parent.children if e.tag == self.tag]) == 0:
+                try:
+                    delattr(self._parent, self.tag)
+                except AttributeError: pass
+        for e in self._find_children():
+            e._root = self
+        self._root = self._parent = None
+        return self
+        
+
+
 class HashedDict(dict):
     def __hash__(self):
         return hash(frozenset(self.items()))
+
 
 class Template(object):
     cache = {}
