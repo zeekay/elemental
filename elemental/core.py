@@ -135,6 +135,7 @@ class Element(object):
         def map_attr(name):
             return {
                 'cls': 'class',
+                'httpequiv': 'http-equiv',
             }.get(name, name)
 
         attrs = ['='.join([map_attr(k), '"%s"' % v]) for k,v in self.attrs.iteritems()]
