@@ -1,7 +1,42 @@
 from sys import modules
-from core import Element as _Element
+from core import Element as Element
 
-_cdnjs_url = '<script src="//cdnjs.cloudflare.com/ajax/libs/{0}.js"></script>'
+class js(Element):
+    tag = 'js'
+
+    def __init__(self, script='', url=''):
+        if script:
+            self.format = '<script type="text/javascript">%s</script>' % script
+        elif url:
+            self.format = '<script type="text/javascript" src="%s"></script>' % url
+        super(js, self).__init__()
+
+    def render_this(self):
+        return self.format
+
+class js_lib(Element):
+    tag = 'js_lib'
+    url = '/js/{version}/app.js'
+    version = '0.1'
+
+    def __init__(self, url='', version=''):
+        if url:
+            self.url = url
+        if version:
+            self.version = version
+        super(js_lib, self).__init__()
+
+    @property
+    def format(self):
+        return ''.join(['<script src="', self.url, '"></script>'])
+
+    def render_this(self):
+        return self.format.format(version=self.version)
+
+class jquery(js_lib):
+    tag = 'jquery' 
+    url = '//ajax.googleapis.com/ajax/libs/jquery/{version}/jquery.min.js'
+    version = '1.6.2'
 
 _cdnjs = [x.split() for x in """
 xuijs 2.0.0 xui.min.js
@@ -42,7 +77,6 @@ raphael 1.5.2 raphael-min.js
 yui 3.3.0 yui-min.js
 underscore.string 1.1.4 underscore.string.min.js
 labjs 2.0 LAB.min.js
-jquery 1.6.2 jquery.min.js
 pubnub 3.1.2 pubnub.min.js
 backbone.js 0.5.1 backbone-min.js
 twitterlib.js 0.9.0 twitterlib.min.js
@@ -54,12 +88,14 @@ socket.io 0.7.0 socket.io.min.js
 knockout 1.2.1 knockout-min.js
 """.splitlines() if x]
 
+_cdnjs_url = '//cdnjs.cloudflare.com/ajax/libs/%s/{version}/%s'
+
 for _name, _version, _filename in _cdnjs:
     _tag = _name.replace('.','')
     _dict = {'tag': _tag,
-             'format': _cdnjs_url.format('%s/{text}/{%s}' % (_name, _filename)),
+             'url': _cdnjs_url % (_name, _filename),
              'version': _version}
-    setattr(modules[__name__], _tag, type(_tag, (_Element,), _dict))
+    setattr(modules[__name__], _tag, type(_tag, (js_lib,), _dict))
 
 def _get_latest_cdnjs():
     import requests
@@ -68,8 +104,3 @@ def _get_latest_cdnjs():
     packages = json.loads(data)['packages']
     for n, v, f in [(x['name'], x['version'], x['filename']) for x in packages if x]:
         print n, v, f
-
-
-class jquery(_Element):
-    tag = 'jquery'
-    format = '<script src="http://ajax.googleapis.com/ajax/libs/jquery/{text}/jquery.min.js"></script>'

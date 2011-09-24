@@ -1,42 +1,34 @@
 from sys import modules
 from core import Element
 
+class HtmlElement(Element):
+    attr_remap = {
+        'cls': 'class',
+    }
+
 elements = [
-    # general
-    'html', 'head', 'body', 'div', 'p', 'a', 'img',
-    'h1', 'h2', 'h3', 'h4', 'h5', 'code', 'obj',
-    'ul', 'li', 'title', 'span', 'pre', 'style',
-    'script', 'noscript',
-    # table
-    'table', 'thead', 'tr', 'th', 'td',
-    # html5 
-    'canvas', 'audio', 'video',
-    # semantic
+    'html', 'head', 'body', 'div', 'p', 'a', 'img', 'h1', 'h2', 'h3', 'h4', 'h5',
+    'code', 'pre', 'ul', 'li', 'title', 'span', 'style', 'script', 'table',
+    'thead', 'tr', 'th', 'td', 'canvas', 'audio', 'video',
     'section', 'article', 'header', 'footer', 'figure', 'em'
 ]
 
 for e in elements:
-    setattr(modules[__name__], e, type(e, (Element,), {'tag': e}))
+    setattr(modules[__name__], e, type(e, (HtmlElement,), {'tag': e}))
 
-class comment(Element):
+class comment(HtmlElement):
     tag = 'comment'
     format = '<!-- {text} -->'
 
-class doctype(Element):
+class doctype(HtmlElement):
     tag = 'doctype'
     format = '<!{tag} {text}{attrs}>{children}'
 
 
-class link(Element):
+class link(HtmlElement):
     tag = 'link'
     format = '<{tag}{attrs}>'
 
 
 class meta(link):
     tag = 'meta'
-
-# clean up
-del e
-del elements
-del modules
-del Element

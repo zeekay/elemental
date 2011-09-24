@@ -31,14 +31,6 @@ class ga(Element):
   </script>'''
 
 
-class js(Element):
-    tag = 'js'
-
-    @property
-    def format(self):
-        return '<script src={text}></script>' if text.startswith('//:') else '<script>{text}</script>'
-
-
 class css(Element):
     tag = 'css'
     format = '<link rel="stylesheet"{attrs} href="{text}">'
